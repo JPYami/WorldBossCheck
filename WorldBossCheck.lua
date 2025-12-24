@@ -22,6 +22,22 @@ local titleText = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 titleText:SetPoint("TOP", 0, -10)
 titleText:SetText("World Boss Check")
 
+-- Tabs container (buttons to switch views)
+local tabs = CreateFrame("Frame", nil, frame)
+tabs:SetSize(200, 20)
+tabs:SetPoint("TOP", 0, -30)
+
+local function CreateTabButton(name, text, xOffset)
+    local btn = CreateFrame("Button", nil, tabs, "UIPanelButtonTemplate")
+    btn:SetSize(90, 20)
+    btn:SetPoint("LEFT", tabs, "LEFT", xOffset, 0)
+    btn:SetText(text)
+    return btn
+end
+
+local tabAllBtn = CreateTabButton("WBC_TabAll", "All", 0)
+local tabOonBtn = CreateTabButton("WBC_TabOondasta", "Oondasta", 96)
+
 -- Close button
 local closeButton = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
 closeButton:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -5, -5)
@@ -45,14 +61,50 @@ local altsContainer = CreateFrame("Frame", nil, frame)
 altsContainer:SetPoint("TOPLEFT", altsHeader, "BOTTOMLEFT", 0, -5)
 altsContainer:SetSize(280, 180)
 
+-- Oondasta-specific header/container (separate from main)
+local altsHeaderOon = oondastaContainer:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+altsHeaderOon:SetPoint("TOPLEFT", oondastaText, "BOTTOMLEFT", 0, -15)
+altsHeaderOon:SetText("Characters:")
+
+local altsContainerOon = CreateFrame("Frame", nil, oondastaContainer)
+altsContainerOon:SetPoint("TOPLEFT", altsHeaderOon, "BOTTOMLEFT", 0, -5)
+altsContainerOon:SetSize(280, 180)
+
+-- Main and Oondasta-specific containers
+local mainContainer = CreateFrame("Frame", nil, frame)
+mainContainer:SetAllPoints(frame)
+
+local oondastaContainer = CreateFrame("Frame", nil, frame)
+oondastaContainer:SetAllPoints(frame)
+oondastaContainer:Hide()
+
+-- Move existing UI elements into containers by re-parenting
+shaOfAngerText:SetParent(mainContainer)
+galleonText:SetParent(mainContainer)
+altsHeader:SetParent(mainContainer)
+altsContainer:SetParent(mainContainer)
+resetText:SetParent(mainContainer)
+footerText:SetParent(frame)
+oondastaText:SetParent(oondastaContainer)
+
+-- Oondasta section: next boss placeholder (for upcoming world boss)
+local nextBossHeader = oondastaContainer:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+nextBossHeader:SetPoint("TOPLEFT", oondastaText, "BOTTOMLEFT", 0, -18)
+nextBossHeader:SetText("Next world boss:")
+
+local nextBossText = oondastaContainer:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+nextBossText:SetPoint("TOPLEFT", nextBossHeader, "BOTTOMLEFT", 0, -6)
+nextBossText:SetText("(empty) - use the database or wait for an update")
+
 -- Row pool
 local rowPool = {}
-local activeRows = {}
+local activeRowsMain = {}
+local activeRowsOon = {}
 
 local function AcquireRow()
     local row = table.remove(rowPool)
     if row then return row end
-    row = CreateFrame("Frame", nil, altsContainer)
+    row = CreateFrame("Frame", nil, frame)
     row:SetSize(280, 18)
 
     row.icon = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -96,8 +148,12 @@ local confirmFrame
 local ShowConfirmToDelete
 
 -- Reset text
-local resetText = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-resetText:SetText("Next reset: (loading...)")
+local resetTextMain = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+resetTextMain:SetText("Next reset: (loading...)")
+
+local resetTextOon = oondastaContainer:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+resetTextOon:SetPoint("TOPLEFT", oondastaContainer, "TOPLEFT", 20, -140)
+resetTextOon:SetText("Next reset: (loading...)")
 
 -- Refresh button
 
@@ -134,8 +190,8 @@ local function ResizeFrameToFitCharacters(count)
     frame:SetHeight(math.max(newHeight, 180))
 end
 
--- Update alt character list
-local function UpdateAltStatusDisplay()
+-- Generic updater for a character list inside a container
+local function UpdateAltStatusDisplayFor(container, altsHeaderLocal, altsContainerLocal, resetTextLocal, activeRows)
     -- Clear active rows
     for _, row in ipairs(activeRows) do
         ReleaseRow(row)
@@ -159,8 +215,9 @@ local function UpdateAltStatusDisplay()
 
     -- Create rows
     for i, entry in ipairs(entries) do
-        local row = AcquireRow()
-        row:SetPoint("TOPLEFT", altsContainer, "TOPLEFT", 0, -(i-1) * 16)
+    local row = AcquireRow()
+    row:SetParent(altsContainerLocal)
+    row:SetPoint("TOPLEFT", altsContainerLocal, "TOPLEFT", 0, -(i-1) * 16)
         local data = entry.data
         local icon
         if data.kills == 2 then
@@ -184,8 +241,14 @@ local function UpdateAltStatusDisplay()
 
     -- Reposition reset text
     local offsetY = -(#entries * 16 + 10)
-    resetText:ClearAllPoints()
-    resetText:SetPoint("TOPLEFT", altsHeader, "BOTTOMLEFT", 0, offsetY)
+    resetTextLocal:ClearAllPoints()
+    resetTextLocal:SetPoint("TOPLEFT", altsHeaderLocal, "BOTTOMLEFT", 0, offsetY)
+end
+
+-- Wrapper to update both tabs
+local function UpdateAltStatusDisplay()
+    UpdateAltStatusDisplayFor(mainContainer, altsHeader, altsContainer, resetTextMain, activeRowsMain)
+    UpdateAltStatusDisplayFor(oondastaContainer, altsHeaderOon, altsContainerOon, resetTextOon, activeRowsOon)
 end
 
 -- Confirmation dialog factory (lazy-created)
@@ -245,6 +308,26 @@ ShowConfirmToDelete = function(fullName)
     confirmFrame.text:SetText("Delete saved data for " .. fullName .. "? This action cannot be undone.")
     confirmFrame:Show()
 end
+
+-- Tab switching
+local function ShowTab(tab)
+    WorldBossCheckDB = WorldBossCheckDB or {}
+    WorldBossCheckDB.lastTab = tab
+    if tab == "oondasta" then
+        mainContainer:Hide()
+        oondastaContainer:Show()
+        tabOonBtn:Disable()
+        tabAllBtn:Enable()
+    else
+        oondastaContainer:Hide()
+        mainContainer:Show()
+        tabAllBtn:Disable()
+        tabOonBtn:Enable()
+    end
+end
+
+tabAllBtn:SetScript("OnClick", function() ShowTab("all") end)
+tabOonBtn:SetScript("OnClick", function() ShowTab("oondasta") end)
 
 -- Update boss kill statuses
 function WorldBossCheck_Update()
@@ -313,7 +396,9 @@ local function UpdateResetTimer()
     local days = math.floor(secondsUntilReset / 86400)
     local hours = math.floor((secondsUntilReset % 86400) / 3600)
     local minutes = math.floor((secondsUntilReset % 3600) / 60)
-    resetText:SetText(string.format("Next reset: %dd %dh %dm", days, hours, minutes))
+    local txt = string.format("Next reset: %dd %dh %dm", days, hours, minutes)
+    if resetTextMain then resetTextMain:SetText(txt) end
+    if resetTextOon then resetTextOon:SetText(txt) end
 end
 
 -- Timer updater
@@ -355,6 +440,8 @@ frame:SetScript("OnEvent", function(self, event, ...)
         WorldBossCheck_Update()
         UpdateResetTimer()
         ScheduleWeeklyRefresh()
+    -- restore last-open tab
+    ShowTab(WorldBossCheckDB.lastTab or "all")
     elseif event == "QUEST_LOG_UPDATE" then
         WorldBossCheck_Update()
     end
