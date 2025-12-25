@@ -1,7 +1,7 @@
 -- Create the main addon frame
 local frame = CreateFrame("Frame", "WorldBossCheckFrame", UIParent, "BackdropTemplate")
--- slightly larger so delete buttons have breathing room
-frame:SetSize(320, 260)
+-- slightly larger so delete buttons have breathing room (wider + taller minimum)
+frame:SetSize(360, 380)
 frame:SetPoint("CENTER")
 frame:SetMovable(true)
 frame:EnableMouse(true)
@@ -17,15 +17,25 @@ frame:SetBackdrop({
     insets = { left = 8, right = 8, top = 8, bottom = 8 }
 })
 
+-- Make the main frame a reasonable frame level so children render above the UI
+frame:SetFrameLevel(70)
+
 -- Title
 local titleText = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-titleText:SetPoint("TOP", 0, -10)
 titleText:SetText("World Boss Check")
+
+-- Put the title into its own small frame so we can control its draw order
+local titleFrame = CreateFrame("Frame", nil, frame)
+titleFrame:SetSize(260, 22)
+titleFrame:SetPoint("TOP", frame, "TOP", 0, -14)
+titleText:SetParent(titleFrame)
+titleText:SetPoint("CENTER", 0, 0)
+titleFrame:SetFrameLevel(95)
 
 -- Tabs container (buttons to switch views)
 local tabs = CreateFrame("Frame", nil, frame)
 tabs:SetSize(200, 20)
-tabs:SetPoint("TOP", 0, -30)
+tabs:SetPoint("TOP", 0, -36)
 
 local function CreateTabButton(name, text, xOffset)
     local btn = CreateFrame("Button", nil, tabs, "UIPanelButtonTemplate")
@@ -35,40 +45,17 @@ local function CreateTabButton(name, text, xOffset)
     return btn
 end
 
-local tabAllBtn = CreateTabButton("WBC_TabAll", "All", 0)
-local tabOonBtn = CreateTabButton("WBC_TabOondasta", "Oondasta", 96)
+local tabAllBtn = CreateTabButton("WBC_TabAll", "Sha/Gall", 0)
+local tabOonBtn = CreateTabButton("WBC_TabOondasta", "Oon/Nalak", 96)
+tabAllBtn:SetFrameStrata("MEDIUM")
+tabOonBtn:SetFrameStrata("MEDIUM")
+tabAllBtn:SetFrameLevel(90)
+tabOonBtn:SetFrameLevel(90)
 
 -- Close button
 local closeButton = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
 closeButton:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -5, -5)
 closeButton:SetSize(24, 24)
-
--- Boss kill lines
-local shaOfAngerText = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-shaOfAngerText:SetPoint("TOPLEFT", 20, -40)
-
-local galleonText = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-galleonText:SetPoint("TOPLEFT", shaOfAngerText, "BOTTOMLEFT", 0, -20)
-
--- Alts header
-local altsHeader = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-altsHeader:SetPoint("TOPLEFT", galleonText, "BOTTOMLEFT", 0, -15)
-altsHeader:SetText("Characters:")
-
--- Alt status text
--- Container for character rows
-local altsContainer = CreateFrame("Frame", nil, frame)
-altsContainer:SetPoint("TOPLEFT", altsHeader, "BOTTOMLEFT", 0, -5)
-altsContainer:SetSize(280, 180)
-
--- Oondasta-specific header/container (separate from main)
-local altsHeaderOon = oondastaContainer:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-altsHeaderOon:SetPoint("TOPLEFT", oondastaText, "BOTTOMLEFT", 0, -15)
-altsHeaderOon:SetText("Characters:")
-
-local altsContainerOon = CreateFrame("Frame", nil, oondastaContainer)
-altsContainerOon:SetPoint("TOPLEFT", altsHeaderOon, "BOTTOMLEFT", 0, -5)
-altsContainerOon:SetSize(280, 180)
 
 -- Main and Oondasta-specific containers
 local mainContainer = CreateFrame("Frame", nil, frame)
@@ -78,34 +65,157 @@ local oondastaContainer = CreateFrame("Frame", nil, frame)
 oondastaContainer:SetAllPoints(frame)
 oondastaContainer:Hide()
 
+-- Content frames (provide inner padded area that hides with each tab)
+local contentFrame = CreateFrame("Frame", nil, mainContainer)
+-- reduce top inset and bottom inset so interior gets more usable height
+-- move content area down to give more space under the title/tabs
+contentFrame:SetPoint("TOPLEFT", mainContainer, "TOPLEFT", 12, -56)
+contentFrame:SetPoint("BOTTOMRIGHT", mainContainer, "BOTTOMRIGHT", -12, 30)
+
+local contentFrameOon = CreateFrame("Frame", nil, oondastaContainer)
+contentFrameOon:SetPoint("TOPLEFT", oondastaContainer, "TOPLEFT", 12, -56)
+contentFrameOon:SetPoint("BOTTOMRIGHT", oondastaContainer, "BOTTOMRIGHT", -12, 30)
+
+-- Oondasta bosses frame (mirror of `bossesFrame` layout for the second tab)
+local bossesFrameOon = CreateFrame("Frame", nil, contentFrameOon)
+bossesFrameOon:SetSize(260, 72)
+bossesFrameOon:SetFrameLevel(90)
+bossesFrameOon:SetPoint("TOPLEFT", contentFrameOon, "TOPLEFT", 0, -8)
+
+-- Oondasta status line placed inside the Oondasta bosses frame (mirrors main tab layout)
+local oondastaStatusText = bossesFrameOon:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+oondastaStatusText:SetPoint("TOPLEFT", 0, -10)
+oondastaStatusText:SetText("Oondasta: (loading...)")
+
+local nalakStatusText = bossesFrameOon:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+nalakStatusText:SetPoint("TOPLEFT", oondastaStatusText, "BOTTOMLEFT", 0, -20)
+nalakStatusText:SetText("Nalak: (loading...)")
+
+-- Boss kill lines
+
+-- Group boss status lines into their own frame to keep them above the row list
+bossesFrame = CreateFrame("Frame", nil, frame)
+bossesFrame:SetSize(260, 72)
+bossesFrame:SetFrameLevel(90)
+
+local shaOfAngerText = bossesFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+-- nudge the Sha line down a few more pixels so the boss lines sit lower together
+shaOfAngerText:SetPoint("TOPLEFT", 0, -10)
+
+
+local galleonText = bossesFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+galleonText:SetPoint("TOPLEFT", shaOfAngerText, "BOTTOMLEFT", 0, -20)
+
+
+-- Alts header
+-- Alts header: put into its own frame so it can sit above rows
+local altsHeaderFrame = CreateFrame("Frame", nil, contentFrame)
+altsHeaderFrame:SetSize(260, 20)
+altsHeaderFrame:SetPoint("TOPLEFT", bossesFrame, "BOTTOMLEFT", 0, -20)
+altsHeaderFrame:SetFrameLevel(95)
+
+local altsHeader = altsHeaderFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+altsHeader:SetPoint("TOPLEFT", 0, 0)
+altsHeader:SetText("Characters:")
+
+-- Alt status text
+-- Container for character rows
+-- Container for character rows
+local altsContainer = CreateFrame("Frame", nil, contentFrame)
+-- move the character list slightly up (less negative offset) per user request
+altsContainer:SetPoint("TOPLEFT", altsHeaderFrame, "BOTTOMLEFT", 0, -7)
+altsContainer:SetPoint("BOTTOMRIGHT", contentFrame, "BOTTOMRIGHT", 0, 20)
+altsContainer:SetWidth(260)
+
+-- Oondasta-specific header/container (separate from main)
+-- Oondasta-specific characters header (use its own frame for layering)
+
+local altsHeaderOonFrame = CreateFrame("Frame", nil, contentFrameOon)
+altsHeaderOonFrame:SetSize(260, 20)
+-- anchor the Oondasta characters header under the bosses frame with offset to place below next boss area
+altsHeaderOonFrame:ClearAllPoints()
+altsHeaderOonFrame:SetPoint("TOPLEFT", bossesFrameOon, "BOTTOMLEFT", 0, -20)
+altsHeaderOonFrame:SetFrameLevel(95)
+
+local altsHeaderOon = altsHeaderOonFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+altsHeaderOon:SetPoint("TOPLEFT", 0, 0)
+altsHeaderOon:SetText("Characters:")
+
+local altsContainerOon = CreateFrame("Frame", nil, contentFrameOon)
+altsContainerOon:SetPoint("TOPLEFT", altsHeaderOonFrame, "BOTTOMLEFT", 0, -6)
+altsContainerOon:SetPoint("BOTTOMRIGHT", contentFrameOon, "BOTTOMRIGHT", 0, 20)
+altsContainerOon:SetWidth(260)
+
+-- Reset text (create before re-parenting so variables exist)
+local resetTextMain = contentFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+resetTextMain:SetPoint("BOTTOMLEFT", contentFrame, "BOTTOMLEFT", 0, -6)
+resetTextMain:SetText("Next reset: (loading...)")
+
+local resetTextOon = contentFrameOon:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+resetTextOon:SetPoint("BOTTOMLEFT", contentFrameOon, "BOTTOMLEFT", 0, -6)
+resetTextOon:SetText("Next reset: (loading...)")
+
 -- Move existing UI elements into containers by re-parenting
-shaOfAngerText:SetParent(mainContainer)
-galleonText:SetParent(mainContainer)
-altsHeader:SetParent(mainContainer)
-altsContainer:SetParent(mainContainer)
-resetText:SetParent(mainContainer)
-footerText:SetParent(frame)
-oondastaText:SetParent(oondastaContainer)
+-- Rows and containers should be children of mainContainer; header and boss lines already live in their own frames
+altsContainer:SetParent(contentFrame)
+resetTextMain:SetParent(contentFrame)
+-- bossesFrame is already parented to mainContainer and contains the boss fontstrings
+-- ensure bossesFrame is a child of the main container view
+-- now that content frames exist, parent and position bossesFrame inside the main contentFrame
+bossesFrame:SetParent(contentFrame)
+bossesFrame:ClearAllPoints()
+bossesFrame:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", 0, -8)
+-- make header frames children of their respective containers now that those containers exist
+altsHeaderFrame:SetParent(contentFrame)
+altsHeaderOonFrame:SetParent(contentFrameOon)
 
 -- Oondasta section: next boss placeholder (for upcoming world boss)
-local nextBossHeader = oondastaContainer:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-nextBossHeader:SetPoint("TOPLEFT", oondastaText, "BOTTOMLEFT", 0, -18)
+-- Oondasta tab: next boss header within the Oondasta content frame
+local nextBossHeader = contentFrameOon:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+-- position the next-boss header under the Oondasta bosses frame so the order matches the main tab
+nextBossHeader:SetPoint("TOPLEFT", bossesFrameOon, "BOTTOMLEFT", 0, -10)
 nextBossHeader:SetText("Next world boss:")
 
-local nextBossText = oondastaContainer:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+local nextBossText = contentFrameOon:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 nextBossText:SetPoint("TOPLEFT", nextBossHeader, "BOTTOMLEFT", 0, -6)
 nextBossText:SetText("(empty) - use the database or wait for an update")
+
+-- Oondasta status line similar to main tab (shows check/cross for current character)
+-- oondastaStatusText is created inside bossesFrameOon to match main tab layout
+
+-- Update the Oondasta next-boss display from saved data (hide if none)
+local function UpdateOondastaNextBoss()
+    WorldBossCheckDB = WorldBossCheckDB or {}
+    local nb = WorldBossCheckDB.nextBoss
+    if nb and nb ~= "" then
+        nextBossHeader:Show()
+        nextBossText:Show()
+        nextBossText:SetText(nb)
+    else
+        -- hide placeholder if there's no known next boss
+        nextBossHeader:Hide()
+        nextBossText:Hide()
+    end
+end
 
 -- Row pool
 local rowPool = {}
 local activeRowsMain = {}
 local activeRowsOon = {}
+-- Row height used for spacing and resizing
+local ROW_HEIGHT = 20
 
 local function AcquireRow()
     local row = table.remove(rowPool)
-    if row then return row end
+    if row then
+        -- clear previous anchors so we don't accumulate points when reusing rows
+        row:ClearAllPoints()
+        row:SetParent(frame)
+        row:SetFrameLevel(50)
+        return row
+    end
     row = CreateFrame("Frame", nil, frame)
-    row:SetSize(280, 18)
+    row:SetSize(280, ROW_HEIGHT)
 
     row.icon = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     row.icon:SetPoint("LEFT", 0, 0)
@@ -118,7 +228,24 @@ local function AcquireRow()
 
     row.deleteBtn = CreateFrame("Button", nil, row, "UIPanelCloseButton")
     row.deleteBtn:SetSize(20, 20)
-    row.deleteBtn:SetPoint("RIGHT", row, "RIGHT", -6, 0)
+    row.deleteBtn:SetPoint("RIGHT", row, "RIGHT", -10, 0)
+
+        -- per-row Oondasta manual checkbox (hidden by default; shown only for current character)
+        row.oonChk = CreateFrame("CheckButton", nil, row, "ChatConfigCheckButtonTemplate")
+        row.oonChk:SetSize(20, 20)
+        row.oonChk:SetPoint("RIGHT", row, "RIGHT", -36, 0)
+        row.oonChk:Hide()
+        row.oonChk.Text:SetText("")
+
+        -- per-row Nalak manual checkbox
+        row.nalakChk = CreateFrame("CheckButton", nil, row, "ChatConfigCheckButtonTemplate")
+        row.nalakChk:SetSize(20, 20)
+        row.nalakChk:SetPoint("RIGHT", row.oonChk, "LEFT", -4, 0)
+        row.nalakChk:Hide()
+        row.nalakChk.Text:SetText("")
+
+    -- default row level lower than headers so headers stay visible
+    row:SetFrameLevel(50)
 
     return row
 end
@@ -129,6 +256,18 @@ local function ReleaseRow(row)
     row.nameText:SetText("")
     row.deleteBtn:Hide()
     row.deleteBtn:SetScript("OnClick", nil)
+    if row.oonChk then
+        row.oonChk:Hide()
+        row.oonChk:SetScript("OnClick", nil)
+    end
+    if row.nalakChk then
+        row.nalakChk:Hide()
+        row.nalakChk:SetScript("OnClick", nil)
+    end
+    -- clear anchors to avoid accumulating multiple SetPoint anchors when reused
+    row:ClearAllPoints()
+    -- reparent to the main frame to keep pool rows out of the visible container
+    row:SetParent(frame)
     table.insert(rowPool, row)
 end
 
@@ -148,19 +287,13 @@ local confirmFrame
 local ShowConfirmToDelete
 
 -- Reset text
-local resetTextMain = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-resetTextMain:SetText("Next reset: (loading...)")
-
-local resetTextOon = oondastaContainer:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-resetTextOon:SetPoint("TOPLEFT", oondastaContainer, "TOPLEFT", 20, -140)
-resetTextOon:SetText("Next reset: (loading...)")
 
 -- Refresh button
 
 -- Footer
 local footerText = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 footerText:SetPoint("BOTTOMRIGHT", -10, 10)
-footerText:SetText("Version 0.4")
+footerText:SetText("Version 0.5 - By xoYeni")
 
 -- Checkbox for auto-open preference
 local autoOpenCheckbox = CreateFrame("CheckButton", "WorldBossCheckAutoOpenCheckbox", frame, "ChatConfigCheckButtonTemplate")
@@ -182,16 +315,17 @@ local function UpdateAutoOpenCheckbox()
 end
 
 -- Resize frame based on character count
+local MIN_FRAME_HEIGHT = 380
 local function ResizeFrameToFitCharacters(count)
-    local baseHeight = 130
-    local perAltLine = 15
-    local staticUIHeight = 60
+    local baseHeight = 150
+    local perAltLine = ROW_HEIGHT
+    local staticUIHeight = 80
     local newHeight = baseHeight + (count * perAltLine) + staticUIHeight
-    frame:SetHeight(math.max(newHeight, 180))
+    frame:SetHeight(math.max(newHeight, MIN_FRAME_HEIGHT))
 end
 
 -- Generic updater for a character list inside a container
-local function UpdateAltStatusDisplayFor(container, altsHeaderLocal, altsContainerLocal, resetTextLocal, activeRows)
+local function UpdateAltStatusDisplayFor(container, altsHeaderLocal, altsContainerLocal, resetTextLocal, activeRows, includeCurrent)
     -- Clear active rows
     for _, row in ipairs(activeRows) do
         ReleaseRow(row)
@@ -215,40 +349,107 @@ local function UpdateAltStatusDisplayFor(container, altsHeaderLocal, altsContain
 
     -- Create rows
     for i, entry in ipairs(entries) do
-    local row = AcquireRow()
-    row:SetParent(altsContainerLocal)
-    row:SetPoint("TOPLEFT", altsContainerLocal, "TOPLEFT", 0, -(i-1) * 16)
+        local row = AcquireRow()
+        row:SetParent(altsContainerLocal)
+        row:SetPoint("TOPLEFT", altsContainerLocal, "TOPLEFT", 0, -(i-1) * ROW_HEIGHT)
         local data = entry.data
+        -- small local icons for ready/cross
+        local checkIcon = "|TInterface\\RaidFrame\\ReadyCheck-Ready:16|t"
+        local waitingIcon = "|TInterface\\RaidFrame\\ReadyCheck-Waiting:16|t"
+        local crossIcon = "|TInterface\\RaidFrame\\ReadyCheck-NotReady:16|t"
+
+        -- If we're rendering the Oondasta tab, show Oondasta-specific status
+        local isOon = (altsContainerLocal == altsContainerOon)
         local icon
-        if data.kills == 2 then
-            icon = "|TInterface\\RaidFrame\\ReadyCheck-Ready:16|t"
-        elseif data.kills == 1 then
-            icon = "|TInterface\\RaidFrame\\ReadyCheck-Waiting:16|t"
+        if isOon then
+            local combined = (data.oonKilled and 1 or 0) + (data.nalakKilled and 1 or 0)
+            if combined == 2 then
+                icon = checkIcon
+            elseif combined == 1 then
+                icon = waitingIcon
+            else
+                icon = crossIcon
+            end
         else
-            icon = "|TInterface\\RaidFrame\\ReadyCheck-NotReady:16|t"
+            if data.kills == 2 then
+                icon = checkIcon
+            elseif data.kills == 1 then
+                icon = waitingIcon
+            else
+                icon = crossIcon
+            end
         end
+
         row.icon:SetText(icon)
         row.nameText:SetText(data.name .. " - " .. data.realm)
+
+        -- Delete button
         row.deleteBtn:Show()
         row.deleteBtn:SetScript("OnClick", function()
             ShowConfirmToDelete(entry.key)
         end)
+
+        -- Oondasta manual checkbox handling: show editable checkbox only for the current character
+        if isOon then
+            if row.oonChk then
+                if entry.key == currentChar then
+                    -- editable checkbox for the currently logged-in character
+                    row.oonChk:Show()
+                    row.oonChk:SetChecked(data.oonKilled == true)
+                    row.oonChk:SetScript("OnClick", function(self)
+                        WorldBossCheckDB = WorldBossCheckDB or {}
+                        WorldBossCheckDB.characters = WorldBossCheckDB.characters or {}
+                        local cur = WorldBossCheckDB.characters[entry.key] or data
+                        cur.oonKilled = self:GetChecked()
+                        cur.lastUpdate = time()
+                        WorldBossCheckDB.characters[entry.key] = cur
+                        -- refresh display to update icon/state
+                        UpdateAltStatusDisplay()
+                    end)
+                else
+                    -- hide the editable checkbox for remote alts
+                    row.oonChk:Hide()
+                end
+            end
+            if row.nalakChk then
+                if entry.key == currentChar then
+                    row.nalakChk:Show()
+                    row.nalakChk:SetChecked(data.nalakKilled == true)
+                    row.nalakChk:SetScript("OnClick", function(self)
+                        WorldBossCheckDB = WorldBossCheckDB or {}
+                        WorldBossCheckDB.characters = WorldBossCheckDB.characters or {}
+                        local cur = WorldBossCheckDB.characters[entry.key] or data
+                        cur.nalakKilled = self:GetChecked()
+                        cur.lastUpdate = time()
+                        WorldBossCheckDB.characters[entry.key] = cur
+                        -- refresh display to update icon/state
+                        UpdateAltStatusDisplay()
+                    end)
+                else
+                    row.nalakChk:Hide()
+                end
+            end
+        else
+            if row.oonChk then row.oonChk:Hide() end
+            if row.nalakChk then row.nalakChk:Hide() end
+        end
+
         row:Show()
         table.insert(activeRows, row)
     end
 
     ResizeFrameToFitCharacters(#entries)
 
-    -- Reposition reset text
-    local offsetY = -(#entries * 16 + 10)
+    -- Reposition reset text below the container so it never overlaps headers
     resetTextLocal:ClearAllPoints()
-    resetTextLocal:SetPoint("TOPLEFT", altsHeaderLocal, "BOTTOMLEFT", 0, offsetY)
+    resetTextLocal:SetPoint("TOPLEFT", altsContainerLocal, "BOTTOMLEFT", 0, -8)
 end
 
 -- Wrapper to update both tabs
 local function UpdateAltStatusDisplay()
-    UpdateAltStatusDisplayFor(mainContainer, altsHeader, altsContainer, resetTextMain, activeRowsMain)
-    UpdateAltStatusDisplayFor(oondastaContainer, altsHeaderOon, altsContainerOon, resetTextOon, activeRowsOon)
+    -- pass the header frames (parents of the FontStrings) so anchors are consistent
+    UpdateAltStatusDisplayFor(mainContainer, altsHeaderFrame, altsContainer, resetTextMain, activeRowsMain)
+    UpdateAltStatusDisplayFor(oondastaContainer, altsHeaderOonFrame, altsContainerOon, resetTextOon, activeRowsOon)
 end
 
 -- Confirmation dialog factory (lazy-created)
@@ -347,6 +548,9 @@ function WorldBossCheck_Update()
         if data.lastUpdate and data.lastUpdate < thisResetTimestamp then
             WorldBossCheckDB.characters[charName].kills = 0
             WorldBossCheckDB.characters[charName].lastUpdate = nil
+            -- clear manual Oondasta mark on weekly reset
+            WorldBossCheckDB.characters[charName].oonKilled = nil
+            WorldBossCheckDB.characters[charName].nalakKilled = nil
         end
     end
 
@@ -365,6 +569,13 @@ function WorldBossCheck_Update()
 
     -- Ignore and cleanup lowbies
     if level < 85 then
+        -- Show level-up message for low-level characters
+        shaOfAngerText:SetText("Not lvl 85 Yet go level!")
+        galleonText:SetText("")
+        oondastaStatusText:SetText("Not lvl 85 Yet go level!")
+        nalakStatusText:SetText("")
+        nextBossHeader:SetText("")
+        nextBossText:SetText("Not lvl 85 Yet go level!")
         WorldBossCheckDB.characters[fullName] = nil
         UpdateAltStatusDisplay()
         return
@@ -373,19 +584,35 @@ function WorldBossCheck_Update()
     -- Boss kills
     local shaKilled = C_QuestLog.IsQuestFlaggedCompleted(32099)
     local galleonKilled = C_QuestLog.IsQuestFlaggedCompleted(32098)
+    local questOon = C_QuestLog.IsQuestFlaggedCompleted(32519)
+    local questNalak = C_QuestLog.IsQuestFlaggedCompleted(32518)
 
     -- Update UI
     shaOfAngerText:SetText("Sha of Anger: " .. (shaKilled and checkIcon or crossIcon))
     galleonText:SetText("Galleon: " .. (galleonKilled and checkIcon or crossIcon))
 
     -- Save progress
+    -- preserve any manual Oondasta flag while updating auto-detected kills
+    local existing = WorldBossCheckDB.characters[fullName] or {}
+    local oonKilled = questOon or existing.oonKilled  -- quest takes priority, else manual
+    local nalakKilled = questNalak or existing.nalakKilled
     WorldBossCheckDB.characters[fullName] = {
         name = name,
         realm = realm,
         level = level,
         kills = (shaKilled and 1 or 0) + (galleonKilled and 1 or 0),
         lastUpdate = now,
+        oonKilled = oonKilled,
+        nalakKilled = nalakKilled,
     }
+
+    -- Update Oondasta status line in Oondasta tab for the current character
+    if oondastaStatusText then
+        oondastaStatusText:SetText("Oondasta: " .. (oonKilled and checkIcon or crossIcon))
+    end
+    if nalakStatusText then
+        nalakStatusText:SetText("Nalak: " .. (nalakKilled and checkIcon or crossIcon))
+    end
 
     UpdateAltStatusDisplay()
 end
@@ -417,6 +644,7 @@ local function ScheduleWeeklyRefresh()
     C_Timer.After(secondsUntilReset + 1, function()
         print("WorldBossCheck: Weekly reset occurred! Refreshing boss data.")
         WorldBossCheck_Update()
+        print("WorldBossCheck: Please review the Oondasta tab and mark which characters killed Oondasta this week.")
         ScheduleWeeklyRefresh()
     end)
 end
@@ -439,6 +667,7 @@ frame:SetScript("OnEvent", function(self, event, ...)
         end
         WorldBossCheck_Update()
         UpdateResetTimer()
+    UpdateOondastaNextBoss()
         ScheduleWeeklyRefresh()
     -- restore last-open tab
     ShowTab(WorldBossCheckDB.lastTab or "all")
